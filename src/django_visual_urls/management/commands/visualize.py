@@ -6,13 +6,22 @@ from django.urls.resolvers import URLPattern, URLResolver
 class Command(BaseCommand):
     help = "Génère un fichier HTML avec la cartographie des URLs du projet."
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--exclude-admin',
+            action='store_true',
+            help='Exclure les URLs de l\'administration Django',
+        )
+
     def handle(self, *args, **options):
         self.stdout.write("🔍 Analyse des URLs en cours...")
         
+        exclude_admin = options['exclude_admin']
+
         # 1. Récupérer toutes les URLs
         resolver = get_resolver()
         url_patterns = resolver.url_patterns
-        nodes, edges = self.extract_graph_data(url_patterns)
+        nodes, edges = self.extract_graph_data(url_patterns, exclude_admin=exclude_admin)
 
         # 2. Générer le code Mermaid
         mermaid_code = "graph LR\n"
@@ -42,7 +51,7 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(f"✅ Terminé ! Fichier généré : {os.path.abspath(output_file)}"))
 
-    def extract_graph_data(self, urlpatterns, prefix="/"):
+    def extract_graph_data(self, urlpatterns, prefix="/", exclude_admin=False):
         """Fonction récursive pour extraire les noeuds et les liens"""
         nodes = []
         edges = []
@@ -52,10 +61,15 @@ class Command(BaseCommand):
         nodes.append({'id': root_id, 'label': prefix, 'type': 'url'})
 
         for pattern in urlpatterns:
+            # Vérification pour l'exclusion de l'admin
+            pattern_str = str(pattern.pattern)
+            if exclude_admin and pattern_str.lstrip('^').startswith('admin/'):
+                continue
+
             if isinstance(pattern, URLResolver):
                 # C'est un 'include', on descend plus profond
                 new_prefix = prefix + str(pattern.pattern)
-                sub_nodes, sub_edges = self.extract_graph_data(pattern.url_patterns, new_prefix)
+                sub_nodes, sub_edges = self.extract_graph_data(pattern.url_patterns, new_prefix, exclude_admin)
                 
                 nodes.extend(sub_nodes)
                 edges.extend(sub_edges)
