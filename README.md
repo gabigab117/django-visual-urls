@@ -43,11 +43,6 @@ The command recursively analyzes your Django URL patterns and generates a graph 
 - **View nodes** (green): View functions or classes
 - **Edges**: Relationships between URLs and views
 
-The visualization handles:
-- Simple URL patterns with `path()` or `re_path()`
-- Nested patterns with `include()`
-- Named URL patterns
-
 ## Example
 
 Given this `urls.py`:
