@@ -1,90 +1,89 @@
-import os
+from pathlib import Path
 from django.core.management.base import BaseCommand
 from django.urls import get_resolver
 from django.urls.resolvers import URLPattern, URLResolver
 
 class Command(BaseCommand):
-    help = "Génère un fichier HTML avec la cartographie des URLs du projet."
+    help = "Generate a visual map of Django URLs using Mermaid.js"
 
     def add_arguments(self, parser):
         parser.add_argument(
-            '--exclude-admin',
+            '--include-admin',
             action='store_true',
-            help='Exclure les URLs de l\'administration Django',
+            help="Include Django admin URLs in the visualization",
         )
 
     def handle(self, *args, **options):
-        self.stdout.write("🔍 Analyse des URLs en cours...")
+        self.stdout.write("🔍 Analyzing URLs...")
         
-        exclude_admin = options['exclude_admin']
+        include_admin = options['include_admin']
 
-        # 1. Récupérer toutes les URLs
         resolver = get_resolver()
         url_patterns = resolver.url_patterns
-        nodes, edges = self.extract_graph_data(url_patterns, exclude_admin=exclude_admin)
-
-        # 2. Générer le code Mermaid
+        nodes, edges = self.extract_graph_data(url_patterns, include_admin=include_admin)
+        # https://mermaid.ai/open-source/ecosystem/tutorials.html
         mermaid_code = "graph LR\n"
-        # Définition des styles (optionnel mais plus joli)
-        mermaid_code += "    classDef view fill:#f9f,stroke:#333,stroke-width:2px;\n"
-        mermaid_code += "    classDef url fill:#e1f5fe,stroke:#0277bd,stroke-width:2px;\n"
+        
+        # Define CSS classes for different node types
+        mermaid_code += "    classDef url fill:#4A90E2,stroke:#2E5C8A,color:#fff\n"
+        mermaid_code += "    classDef view fill:#7ED321,stroke:#5FA319,color:#fff\n"
 
         for node in nodes:
-            # On nettoie les ID pour éviter les bugs Mermaid
             clean_id = self.clean_str(node['id'])
             label = node['label']
-            css_class = node['type']
-            mermaid_code += f'    {clean_id}["{label}"]:::{css_class}\n'
+            node_type = node['type']
+            mermaid_code += f'    {clean_id}["{label}"]:::{node_type}\n'
 
         for edge in edges:
             src = self.clean_str(edge['source'])
             dst = self.clean_str(edge['target'])
             mermaid_code += f'    {src} --> {dst}\n'
 
-        # 3. Créer le HTML final
         html_content = self.get_html_template(mermaid_code)
 
-        # 4. Écriture du fichier
         output_file = "url_map.html"
         with open(output_file, "w", encoding="utf-8") as f:
             f.write(html_content)
 
-        self.stdout.write(self.style.SUCCESS(f"✅ Terminé ! Fichier généré : {os.path.abspath(output_file)}"))
-
-    def extract_graph_data(self, urlpatterns, prefix="/", exclude_admin=False):
-        """Fonction récursive pour extraire les noeuds et les liens"""
+        self.stdout.write(self.style.SUCCESS(f"✅ Done! File generated: {Path(output_file).resolve()}"))
+        
+    def extract_graph_data(self, urlpatterns, prefix="/", include_admin=False):
+        """
+        Recursively extract nodes and edges from urlpatterns.
+        """
         nodes = []
         edges = []
 
-        # Création du noeud racine pour ce niveau
+        # Create the root node for this level
         root_id = f"url_{prefix}"
         nodes.append({'id': root_id, 'label': prefix, 'type': 'url'})
 
         for pattern in urlpatterns:
-            # Vérification pour l'exclusion de l'admin
+            # Check for admin exclusion
             pattern_str = str(pattern.pattern)
-            if exclude_admin and pattern_str.lstrip('^').startswith('admin/'):
+            is_admin_url = pattern_str.lstrip('^').startswith('admin/')
+            if not include_admin and is_admin_url:
                 continue
 
             if isinstance(pattern, URLResolver):
-                # C'est un 'include', on descend plus profond
+                # It's an 'include', we go deeper
                 new_prefix = prefix + str(pattern.pattern)
-                sub_nodes, sub_edges = self.extract_graph_data(pattern.url_patterns, new_prefix, exclude_admin)
+                sub_nodes, sub_edges = self.extract_graph_data(pattern.url_patterns, new_prefix, include_admin=include_admin)
                 
                 nodes.extend(sub_nodes)
                 edges.extend(sub_edges)
                 
-                # On lie le dossier parent au dossier enfant
+                # Link parent folder to child folder
                 child_root_id = f"url_{new_prefix}"
                 edges.append({'source': root_id, 'target': child_root_id})
 
             elif isinstance(pattern, URLPattern):
-                # C'est une vue finale
+                # It's a final view
                 full_url = prefix + str(pattern.pattern)
-                # Nettoyage des caractères regex de Django (^, $)
+                # Clean Django regex characters (^, $)
                 full_url = full_url.replace('^', '').replace('$', '')
                 
-                # Nom de la vue
+                # View name
                 if hasattr(pattern.callback, '__name__'):
                     view_name = pattern.callback.__name__
                     module_name = pattern.callback.__module__
@@ -94,15 +93,17 @@ class Command(BaseCommand):
 
                 view_id = f"view_{full_view_name}"
                 
-                # Ajout du noeud Vue
+                # Add the view node
                 nodes.append({'id': view_id, 'label': view_name, 'type': 'view'})
-                # Lien URL -> Vue
+                # Link URL -> View
                 edges.append({'source': root_id, 'target': view_id})
 
         return nodes, edges
 
-    def clean_str(self, text):
-        """Nettoie les chaînes pour qu'elles soient des IDs Mermaid valides"""
+    def clean_str(self, text: str) -> str:
+        """
+        Example: "/api/v1/users/<int:id>/" -> "_api_v1_users_int_id_"
+        """
         return text.replace("/", "_").replace(".", "_").replace("-", "_").replace(":", "_").replace("<", "").replace(">", "")
 
     def get_html_template(self, mermaid_content):
@@ -119,14 +120,14 @@ class Command(BaseCommand):
             </style>
         </head>
         <body>
-            <h1>Cartographie des URLs Django</h1>
+            <h1>Django URL Map</h1>
             <div class="container">
                 <pre class="mermaid">
-{mermaid_content}
+                    {mermaid_content}
                 </pre>
             </div>
             <script type="module">
-                import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+                import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
                 mermaid.initialize({{ startOnLoad: true }});
             </script>
         </body>

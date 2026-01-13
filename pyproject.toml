@@ -1,12 +1,13 @@
 [build-system]
-requires = ["setuptools>=80.9.0"]
+requires = ["setuptools >= 77.0.3"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "django-visual-urls"
 version = "0.0.1"
 description = "Une librairie pour visualiser les URLs Django avec un graphe interactif."
-requires-python = ">=3.6"
+requires-python = ">=3.9"
+license = {text = "MIT License"}
 classifiers = [
     "Framework :: Django",
     "Programming Language :: Python :: 3",
@@ -14,6 +15,15 @@ classifiers = [
 dependencies = [
     "Django>=3.2",
 ]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = [
+    "src",
+]
+python_files = ["tests.py", "test_*.py", "*_test.py"]
+django_find_project = false
 
 [project.urls]
 "Homepage" = "https://github.com/gabigab117/django-visual-urls"
